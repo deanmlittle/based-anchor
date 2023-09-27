@@ -270,6 +270,10 @@ pub trait Space {
     const INIT_SPACE: usize;
 }
 
+pub trait Migrate<T> {
+    fn migrate(&self) -> T;    
+}
+
 /// Bump seed for program derived addresses.
 pub trait Bump {
     fn seed(&self) -> u8;

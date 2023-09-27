@@ -203,6 +203,7 @@ impl AccountField {
         let qualified_ty_name = match self {
             AccountField::Field(field) => match &field.ty {
                 Ty::Account(account) => Some(parser::tts_to_string(&account.account_type_path)),
+                Ty::Migration(account) => Some(parser::tts_to_string(&account.account_type_path)),
                 _ => None,
             },
             AccountField::CompositeField(field) => Some(field.symbol.clone()),
@@ -253,8 +254,7 @@ impl Field {
             Ty::SystemAccount => quote! {
                 SystemAccount
             },
-            Ty::Account(AccountTy { boxed, .. })
-            | Ty::InterfaceAccount(InterfaceAccountTy { boxed, .. }) => {
+            Ty::Account(AccountTy { boxed, .. }) => {
                 if *boxed {
                     quote! {
                         Box<#container_ty<#account_ty>>
@@ -264,7 +264,29 @@ impl Field {
                         #container_ty<#account_ty>
                     }
                 }
-            }
+            },
+            Ty::InterfaceAccount(InterfaceAccountTy { boxed, .. }) => {
+                if *boxed {
+                    quote! {
+                        Box<#container_ty<#account_ty>>
+                    }
+                } else {
+                    quote! {
+                        #container_ty<#account_ty>
+                    }
+                }
+            },
+            Ty::Migration(MigrationTy { boxed, .. }) => {
+                if *boxed {
+                    quote! {
+                        Box<#container_ty<#account_ty>>
+                    }
+                } else {
+                    quote! {
+                        #container_ty<#account_ty>
+                    }
+                }
+            },
             Ty::Sysvar(ty) => {
                 let account = match ty {
                     SysvarTy::Clock => quote! {Clock},
@@ -320,9 +342,10 @@ impl Field {
             Ty::AccountInfo => quote! { #field.to_account_info() },
             Ty::UncheckedAccount => {
                 quote! { UncheckedAccount::try_from(#field.to_account_info()) }
-            }
+            },
             Ty::Account(AccountTy { boxed, .. })
-            | Ty::InterfaceAccount(InterfaceAccountTy { boxed, .. }) => {
+            | Ty::InterfaceAccount(InterfaceAccountTy { boxed, .. })
+            | Ty::Migration(MigrationTy { boxed, ..}) => {
                 let stream = if checked {
                     quote! {
                         match #container_ty::try_from(&#field) {
@@ -345,7 +368,7 @@ impl Field {
                 } else {
                     stream
                 }
-            }
+            },
             Ty::AccountLoader(_) => {
                 if checked {
                     quote! {
@@ -362,7 +385,7 @@ impl Field {
                         }
                     }
                 }
-            }
+            },
             _ => {
                 if checked {
                     quote! {
@@ -387,6 +410,9 @@ impl Field {
         match &self.ty {
             Ty::Account(_) => quote! {
                 anchor_lang::accounts::account::Account
+            },
+            Ty::Migration(_) => quote! {
+                anchor_lang::accounts::migration::Migration
             },
             Ty::AccountLoader(_) => quote! {
                 anchor_lang::accounts::account_loader::AccountLoader
@@ -428,19 +454,31 @@ impl Field {
                 quote! {
                     #ident
                 }
-            }
+            },
+            Ty::Migration(ty) => {
+                let ident = &ty.account_type_path;
+                let to_ident = &ty.to_account_type_path;
+                quote! {
+                    #ident, #to_ident
+                }
+                // let ident = &ty.account_type_path;
+                // let to_ident = &ty.to_account_type_path;
+                // quote! {
+                //     #ident, #to_ident
+                // }
+            },
             Ty::InterfaceAccount(ty) => {
                 let ident = &ty.account_type_path;
                 quote! {
                     #ident
                 }
-            }
+            },
             Ty::AccountLoader(ty) => {
                 let ident = &ty.account_type_path;
                 quote! {
                     #ident
                 }
-            }
+            },
             Ty::Sysvar(ty) => match ty {
                 SysvarTy::Clock => quote! {Clock},
                 SysvarTy::Rent => quote! {Rent},
@@ -487,6 +525,7 @@ pub enum Ty {
     AccountLoader(AccountLoaderTy),
     Sysvar(SysvarTy),
     Account(AccountTy),
+    Migration(MigrationTy),
     Program(ProgramTy),
     Interface(InterfaceTy),
     InterfaceAccount(InterfaceAccountTy),
@@ -519,6 +558,16 @@ pub struct AccountLoaderTy {
 pub struct AccountTy {
     // The struct type of the account.
     pub account_type_path: TypePath,
+    // True if the account has been boxed via `Box<T>`.
+    pub boxed: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct MigrationTy {
+    // The struct type of the account.
+    pub account_type_path: TypePath,
+    // The struct type that the account will be migrated to.
+    pub to_account_type_path: TypePath,
     // True if the account has been boxed via `Box<T>`.
     pub boxed: bool,
 }
