@@ -338,6 +338,7 @@ fn is_field_primitive(f: &syn::Field) -> ParseResult<bool> {
             | "UncheckedAccount"
             | "AccountLoader"
             | "Account"
+            | "Migration"
             | "Program"
             | "Interface"
             | "InterfaceAccount"
@@ -356,6 +357,7 @@ fn parse_ty(f: &syn::Field) -> ParseResult<(Ty, bool)> {
         "UncheckedAccount" => Ty::UncheckedAccount,
         "AccountLoader" => Ty::AccountLoader(parse_program_account_loader(&path)?),
         "Account" => Ty::Account(parse_account_ty(&path)?),
+        "Migration" => Ty::Migration(parse_migration_ty(&path)?),
         "Program" => Ty::Program(parse_program_ty(&path)?),
         "Interface" => Ty::Interface(parse_interface_ty(&path)?),
         "InterfaceAccount" => Ty::InterfaceAccount(parse_interface_account_ty(&path)?),
@@ -414,6 +416,12 @@ fn ident_string(f: &syn::Field) -> ParseResult<(String, bool, Path)> {
     }
     if parser::tts_to_string(&path)
         .replace(' ', "")
+        .starts_with("Box<Migration<")
+    {
+        return Ok(("Migration".to_string(), optional, path));
+    }
+    if parser::tts_to_string(&path)
+        .replace(' ', "")
         .starts_with("Box<InterfaceAccount<")
     {
         return Ok(("InterfaceAccount".to_string(), optional, path));
@@ -448,6 +456,19 @@ fn parse_account_ty(path: &syn::Path) -> ParseResult<AccountTy> {
     })
 }
 
+fn parse_migration_ty(path: &syn::Path) -> ParseResult<MigrationTy> {
+    // let account_type_path = parse_migration2(path)?;
+    let (account_type_path, to_account_type_path) = parse_migration(path)?;
+    let boxed = parser::tts_to_string(path)
+        .replace(' ', "")
+        .starts_with("Box<Migration<");
+    Ok(MigrationTy {
+        account_type_path,
+        to_account_type_path,
+        boxed,
+    })
+}
+
 fn parse_interface_account_ty(path: &syn::Path) -> ParseResult<InterfaceAccountTy> {
     let account_type_path = parse_account(path)?;
     let boxed = parser::tts_to_string(path)
@@ -467,6 +488,65 @@ fn parse_program_ty(path: &syn::Path) -> ParseResult<ProgramTy> {
 fn parse_interface_ty(path: &syn::Path) -> ParseResult<InterfaceTy> {
     let account_type_path = parse_account(path)?;
     Ok(InterfaceTy { account_type_path })
+}
+
+fn parse_migration(mut path: &syn::Path) -> ParseResult<(syn::TypePath,syn::TypePath)> {
+    let path_str = parser::tts_to_string(path).replace(' ', "");
+    if path_str.starts_with("Box<Migration<") {
+        let segments = &path.segments[0];
+        match &segments.arguments {
+            syn::PathArguments::AngleBracketed(args) => {
+                // Expected: <'info, (FromType, ToType)>.
+                if args.args.len() != 1 {
+                    return Err(ParseError::new(
+                        args.args.span(),
+                        "bracket arguments must be the lifetime and type",
+                    ));
+                }
+                match &args.args[0] {
+                    syn::GenericArgument::Type(syn::Type::Path(ty_path)) => {
+                        path = &ty_path.path;
+                    }
+                    _ => {
+                        return Err(ParseError::new(
+                            args.args[1].span(),
+                            "first bracket argument must be a lifetime",
+                        ))
+                    }
+                }
+            }
+            _ => {
+                return Err(ParseError::new(
+                    segments.arguments.span(),
+                    "expected angle brackets with a lifetime and type",
+                ))
+            }
+        }
+    }
+
+    let segments = &path.segments[0];
+    match &segments.arguments {
+        syn::PathArguments::AngleBracketed(args) => {
+            // Expected: <'info, Type1, Type2)>.
+            if args.args.len() != 3 {
+                return Err(ParseError::new(
+                    args.args.span(),
+                    "bracket arguments must be the lifetime and type",
+                ));
+            }
+            match (&args.args[1], &args.args[2]) {
+                (syn::GenericArgument::Type(syn::Type::Path(ty_path)), syn::GenericArgument::Type(syn::Type::Path(ty_path2))) => Ok((ty_path.clone(), ty_path2.clone())),
+                _ => Err(ParseError::new(
+                    args.args[1].span(),
+                    "first bracket argument must be a lifetime",
+                )),
+            }
+        }
+        _ => Err(ParseError::new(
+            segments.arguments.span(),
+            "expected angle brackets with a lifetime and tuple type",
+        )),
+    }
 }
 
 // TODO: this whole method is a hack. Do something more idiomatic.
