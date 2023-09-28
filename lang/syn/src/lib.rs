@@ -461,11 +461,6 @@ impl Field {
                 quote! {
                     #ident, #to_ident
                 }
-                // let ident = &ty.account_type_path;
-                // let to_ident = &ty.to_account_type_path;
-                // quote! {
-                //     #ident, #to_ident
-                // }
             },
             Ty::InterfaceAccount(ty) => {
                 let ident = &ty.account_type_path;

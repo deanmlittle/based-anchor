@@ -4,7 +4,7 @@ use crate::bpf_writer::BpfWriter;
 use crate::error::{Error, ErrorCode};
 use crate::{
     AccountDeserialize, AccountSerialize, Accounts, AccountsClose, AccountsExit, Key, Owner,
-    Result, ToAccountInfo, ToAccountInfos, ToAccountMetas, Migrate, Space,
+    Result, ToAccountInfo, ToAccountInfos, ToAccountMetas, Migrate,
 };
 use solana_program::account_info::AccountInfo;
 use solana_program::instruction::AccountMeta;
@@ -227,15 +227,15 @@ use std::ops::{Deref, DerefMut};
 
 pub struct Migration<'info, MigrateFrom, MigrateTo>
 where
-    MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space,
-    MigrateTo: AccountSerialize + Clone + Space,
+    MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>,
+    MigrateTo: AccountSerialize + Clone,
 {
     account: MigrateFrom,
     info: AccountInfo<'info>,
     _phantom: PhantomData<MigrateTo>,
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space + fmt::Debug, MigrateTo: AccountSerialize + Clone + Space + fmt::Debug> fmt::Debug
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + fmt::Debug, MigrateTo: AccountSerialize + Clone + fmt::Debug> fmt::Debug
     for Migration<'info, MigrateFrom, MigrateTo>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -243,7 +243,7 @@ impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space
     }
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space + fmt::Debug, MigrateTo: AccountSerialize + Clone + Space + fmt::Debug> Migration<'info, MigrateFrom, MigrateTo> {
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + fmt::Debug, MigrateTo: AccountSerialize + Clone + fmt::Debug> Migration<'info, MigrateFrom, MigrateTo> {
     pub(crate) fn fmt_with_name(&self, name: &str, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(name)
             .field("account", &self.account)
@@ -252,7 +252,7 @@ impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space
     }
 }
 
-impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, MigrateTo: AccountSerialize + Clone + Space> Migration<'a, MigrateFrom, MigrateTo> {
+impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, MigrateTo: AccountSerialize + Clone> Migration<'a, MigrateFrom, MigrateTo> {
     pub(crate) fn new(info: AccountInfo<'a>, account: MigrateFrom) -> Migration<'a, MigrateFrom, MigrateTo> {
         Self { info, account, _phantom: PhantomData }
     }
@@ -306,7 +306,7 @@ impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, M
     }
 }
 
-impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space + Owner, MigrateTo: AccountSerialize + Clone + Space> Migration<'a, MigrateFrom, MigrateTo> {
+impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Owner, MigrateTo: AccountSerialize + Clone> Migration<'a, MigrateFrom, MigrateTo> {
     /// Deserializes the given `info` into a `Account`.
     #[inline(never)]
     pub fn try_from(info: &AccountInfo<'a>) -> Result<Migration<'a, MigrateFrom, MigrateTo>> {
@@ -341,11 +341,11 @@ impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space + 
     }
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space + Owner, MigrateTo: AccountSerialize + Clone + Space> Accounts<'info>
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Owner, MigrateTo: AccountSerialize + Clone> Accounts<'info>
     for Migration<'info, MigrateFrom, MigrateTo>
 where
-    MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, 
-    MigrateTo: AccountSerialize + Clone + Space
+    MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, 
+    MigrateTo: AccountSerialize + Clone
 {
     #[inline(never)]
     fn try_accounts(
@@ -364,7 +364,7 @@ where
     }
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space + Owner, MigrateTo: AccountSerialize + Clone + Space> AccountsExit<'info>
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Owner, MigrateTo: AccountSerialize + Clone> AccountsExit<'info>
     for Migration<'info, MigrateFrom, MigrateTo>
 {
     fn exit(&self, program_id: &Pubkey) -> Result<()> {
@@ -372,7 +372,7 @@ impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space
     }
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, MigrateTo: AccountSerialize + Clone + Space> AccountsClose<'info>
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, MigrateTo: AccountSerialize + Clone> AccountsClose<'info>
     for Migration<'info, MigrateFrom, MigrateTo>
 {
     fn close(&self, sol_destination: AccountInfo<'info>) -> Result<()> {
@@ -380,7 +380,7 @@ impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space
     }
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, MigrateTo: AccountSerialize + Clone + Space> ToAccountMetas for Migration<'info, MigrateFrom, MigrateTo> {
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, MigrateTo: AccountSerialize + Clone> ToAccountMetas for Migration<'info, MigrateFrom, MigrateTo> {
     fn to_account_metas(&self, is_signer: Option<bool>) -> Vec<AccountMeta> {
         let is_signer = is_signer.unwrap_or(self.info.is_signer);
         let meta = match self.info.is_writable {
@@ -391,7 +391,7 @@ impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space
     }
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, MigrateTo: AccountSerialize + Clone + Space> ToAccountInfos<'info>
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, MigrateTo: AccountSerialize + Clone> ToAccountInfos<'info>
     for Migration<'info, MigrateFrom, MigrateTo>
 {
     fn to_account_infos(&self) -> Vec<AccountInfo<'info>> {
@@ -399,7 +399,7 @@ impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space
     }
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, MigrateTo: AccountSerialize + Clone + Space> AsRef<AccountInfo<'info>>
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, MigrateTo: AccountSerialize + Clone> AsRef<AccountInfo<'info>>
     for Migration<'info, MigrateFrom, MigrateTo>
 {
     fn as_ref(&self) -> &AccountInfo<'info> {
@@ -407,13 +407,13 @@ impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space
     }
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, MigrateTo: AccountSerialize + Clone + Space> AsRef<MigrateFrom> for Migration<'info, MigrateFrom, MigrateTo> {
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, MigrateTo: AccountSerialize + Clone> AsRef<MigrateFrom> for Migration<'info, MigrateFrom, MigrateTo> {
     fn as_ref(&self) -> &MigrateFrom {
         &self.account
     }
 }
 
-impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, MigrateTo: AccountSerialize + Clone + Space> Deref for Migration<'a, MigrateFrom, MigrateTo> {
+impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, MigrateTo: AccountSerialize + Clone> Deref for Migration<'a, MigrateFrom, MigrateTo> {
     type Target = MigrateFrom;
 
     fn deref(&self) -> &Self::Target {
@@ -421,7 +421,7 @@ impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, M
     }
 }
 
-impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, MigrateTo: AccountSerialize + Clone + Space> DerefMut for Migration<'a, MigrateFrom, MigrateTo> {
+impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, MigrateTo: AccountSerialize + Clone> DerefMut for Migration<'a, MigrateFrom, MigrateTo> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         #[cfg(feature = "anchor-debug")]
         if !self.info.is_writable {
@@ -432,7 +432,7 @@ impl<'a, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, M
     }
 }
 
-impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo> + Space, MigrateTo: AccountSerialize + Clone + Space> Key for Migration<'info, MigrateFrom, MigrateTo> {
+impl<'info, MigrateFrom: AccountDeserialize + Clone + Migrate<MigrateTo>, MigrateTo: AccountSerialize + Clone> Key for Migration<'info, MigrateFrom, MigrateTo> {
     fn key(&self) -> Pubkey {
         *self.info.key
     }
