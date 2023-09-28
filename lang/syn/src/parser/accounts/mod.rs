@@ -457,7 +457,6 @@ fn parse_account_ty(path: &syn::Path) -> ParseResult<AccountTy> {
 }
 
 fn parse_migration_ty(path: &syn::Path) -> ParseResult<MigrationTy> {
-    // let account_type_path = parse_migration2(path)?;
     let (account_type_path, to_account_type_path) = parse_migration(path)?;
     let boxed = parser::tts_to_string(path)
         .replace(' ', "")

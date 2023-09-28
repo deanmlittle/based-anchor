@@ -689,6 +689,7 @@ pub fn gen_idl_build_impl_for_accounts_struct(
                     crate::Ty::Account(ty) => Some(&ty.account_type_path),
                     crate::Ty::AccountLoader(ty) => Some(&ty.account_type_path),
                     crate::Ty::InterfaceAccount(ty) => Some(&ty.account_type_path),
+                    crate::Ty::Migration(ty) => Some(&ty.account_type_path),
                     _ => None,
                 };
 
