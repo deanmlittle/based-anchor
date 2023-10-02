@@ -35,6 +35,7 @@ pub mod accounts;
 mod bpf_upgradeable_state;
 mod bpf_writer;
 mod common;
+pub mod compressed_state;
 pub mod context;
 pub mod error;
 #[doc(hidden)]
@@ -52,6 +53,7 @@ pub use anchor_attribute_error::*;
 pub use anchor_attribute_event::{emit, event};
 pub use anchor_attribute_program::program;
 pub use anchor_derive_accounts::Accounts;
+pub use compressed_state::CompressedState;
 pub use anchor_derive_serde::{AnchorDeserialize, AnchorSerialize};
 pub use anchor_derive_space::InitSpace;
 
@@ -91,6 +93,8 @@ pub trait Accounts<'info>: ToAccountMetas + ToAccountInfos<'info> + Sized {
         accounts: &mut &[AccountInfo<'info>],
         ix_data: &[u8],
         bumps: &mut BTreeMap<String, u8>,
+        seeds: &mut BTreeMap<String, Vec<u8>>,
+        state: &mut BTreeMap<String, Vec<u8>>,
         reallocs: &mut BTreeSet<Pubkey>,
     ) -> Result<Self>;
 }
@@ -352,10 +356,11 @@ pub mod prelude {
         accounts::account_loader::AccountLoader, accounts::interface::Interface,
         accounts::interface_account::InterfaceAccount, accounts::program::Program,
         accounts::signer::Signer, accounts::system_account::SystemAccount,
-        accounts::migration::Migration,
+        accounts::migration::Migration, 
+        // accounts::compressed_account::CompressedAccount,
         accounts::sysvar::Sysvar, accounts::unchecked_account::UncheckedAccount, constant,
         context::Context, context::CpiContext, declare_id, emit, err, error, event, program,
-        require, require_eq, require_gt, require_gte, require_keys_eq, require_keys_neq,
+        require, require_eq, require_gt, require_gte, require_keys_eq, require_keys_neq, seeds,
         require_neq, solana_program::bpf_loader_upgradeable::UpgradeableLoaderState, source,
         system_program::System, zero_copy, AccountDeserialize, AccountSerialize, Accounts,
         AccountsClose, AccountsExit, AnchorDeserialize, AnchorSerialize, Id, InitSpace, Key,
@@ -689,5 +694,13 @@ macro_rules! source {
             filename: file!(),
             line: line!(),
         }
+    };
+}
+
+/// Takes in a [`Context`] and an [`&str`] and creates signing seeds for a [`CpiContext`](crate::context::CpiContext)
+#[macro_export]
+macro_rules! seeds {
+    ($ctx:expr,$seed:expr) => {
+        [&[&$ctx.seeds.get($seed).unwrap()[..]][..]]
     };
 }

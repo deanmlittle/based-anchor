@@ -250,6 +250,8 @@ impl<'info, T: AccountSerialize + AccountDeserialize + CheckOwner + Clone> Accou
         accounts: &mut &[AccountInfo<'info>],
         _ix_data: &[u8],
         _bumps: &mut BTreeMap<String, u8>,
+        _seeds: &mut BTreeMap<String, Vec<u8>>,
+        _state: &mut BTreeMap<String, Vec<u8>>,
         _reallocs: &mut BTreeSet<Pubkey>,
     ) -> Result<Self> {
         if accounts.is_empty() {

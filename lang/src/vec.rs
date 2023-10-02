@@ -26,10 +26,12 @@ impl<'info, T: Accounts<'info>> Accounts<'info> for Vec<T> {
         accounts: &mut &[AccountInfo<'info>],
         ix_data: &[u8],
         bumps: &mut BTreeMap<String, u8>,
+        seeds: &mut BTreeMap<String, Vec<u8>>,
+        state: &mut BTreeMap<String, Vec<u8>>,
         reallocs: &mut BTreeSet<Pubkey>,
     ) -> Result<Self> {
         let mut vec: Vec<T> = Vec::new();
-        T::try_accounts(program_id, accounts, ix_data, bumps, reallocs)
+        T::try_accounts(program_id, accounts, ix_data, bumps, seeds, state, reallocs)
             .map(|item| vec.push(item))?;
         Ok(vec)
     }
@@ -80,10 +82,12 @@ mod tests {
             Epoch::default(),
         );
         let mut bumps = std::collections::BTreeMap::new();
+        let mut seeds = std::collections::BTreeMap::new();
+        let mut state = std::collections::BTreeMap::new();
         let mut reallocs = std::collections::BTreeSet::new();
         let mut accounts = &[account1, account2][..];
         let parsed_accounts =
-            Vec::<Test>::try_accounts(&program_id, &mut accounts, &[], &mut bumps, &mut reallocs)
+            Vec::<Test>::try_accounts(&program_id, &mut accounts, &[], &mut bumps, &mut seeds, &mut state, &mut reallocs)
                 .unwrap();
 
         assert_eq!(accounts.len(), parsed_accounts.len());
@@ -94,9 +98,11 @@ mod tests {
     fn test_accounts_trait_for_vec_empty() {
         let program_id = Pubkey::default();
         let mut bumps = std::collections::BTreeMap::new();
+        let mut seeds = std::collections::BTreeMap::new();
+        let mut state = std::collections::BTreeMap::new();
         let mut reallocs = std::collections::BTreeSet::new();
         let mut accounts = &[][..];
-        Vec::<Test>::try_accounts(&program_id, &mut accounts, &[], &mut bumps, &mut reallocs)
+        Vec::<Test>::try_accounts(&program_id, &mut accounts, &[], &mut bumps, &mut seeds, &mut state, &mut reallocs)
             .unwrap();
     }
 }

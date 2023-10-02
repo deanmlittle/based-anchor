@@ -24,6 +24,8 @@ impl<'info, T: Accounts<'info>> Accounts<'info> for Option<T> {
         accounts: &mut &[AccountInfo<'info>],
         ix_data: &[u8],
         bumps: &mut BTreeMap<String, u8>,
+        seeds: &mut BTreeMap<String, Vec<u8>>,
+        state: &mut BTreeMap<String, Vec<u8>>,
         reallocs: &mut BTreeSet<Pubkey>,
     ) -> Result<Self> {
         if accounts.is_empty() {
@@ -50,7 +52,7 @@ impl<'info, T: Accounts<'info>> Accounts<'info> for Option<T> {
             // If the program_id doesn't equal the account key, we default to
             // the try_accounts implementation for the inner type and then wrap that with
             // Some. This should handle all possible valid cases.
-            T::try_accounts(program_id, accounts, ix_data, bumps, reallocs).map(Some)
+            T::try_accounts(program_id, accounts, ix_data, bumps, seeds, state, reallocs).map(Some)
         }
     }
 }

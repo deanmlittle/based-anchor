@@ -98,7 +98,7 @@ impl<'a> PdaParser<'a> {
             .as_ref()
             .map(|pid| self.parse_seed(pid))
             .unwrap_or_default();
-
+        
         // Done.
         Some(IdlPda { seeds, program_id })
     }

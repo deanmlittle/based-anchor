@@ -125,7 +125,7 @@ pub fn parse_token(stream: ParseStream) -> ParseResult<ConstraintToken> {
                 )),
                 _ => return Err(ParseError::new(ident.span(), "Invalid attribute")),
             }
-        }
+        },
         "associated_token" => {
             stream.parse::<Token![:]>()?;
             stream.parse::<Token![:]>()?;
@@ -158,7 +158,7 @@ pub fn parse_token(stream: ParseStream) -> ParseResult<ConstraintToken> {
                 )),
                 _ => return Err(ParseError::new(ident.span(), "Invalid attribute")),
             }
-        }
+        },
         "bump" => {
             let bump = {
                 if stream.peek(Token![=]) {
@@ -169,26 +169,33 @@ pub fn parse_token(stream: ParseStream) -> ParseResult<ConstraintToken> {
                 }
             };
             ConstraintToken::Bump(Context::new(ident.span(), ConstraintTokenBump { bump }))
-        }
+        },
         "seeds" => {
             if stream.peek(Token![:]) {
                 stream.parse::<Token![:]>()?;
                 stream.parse::<Token![:]>()?;
-                let kw = stream.call(Ident::parse_any)?.to_string();
-                stream.parse::<Token![=]>()?;
-
-                let span = ident
-                    .span()
-                    .join(stream.span())
-                    .unwrap_or_else(|| ident.span());
-
+                let ident = stream.call(Ident::parse_any)?;
+                let kw = ident.to_string();  
                 match kw.as_str() {
-                    "program" => ConstraintToken::ProgramSeed(Context::new(
-                        span,
-                        ConstraintProgramSeed {
-                            program_seed: stream.parse()?,
-                        },
-                    )),
+                    "save" => {
+                        ConstraintToken::SaveSeeds(Context::new(
+                            ident.span(),
+                            ConstraintSaveSeeds {},
+                        ))
+                    },
+                    "program" => {
+                        stream.parse::<Token![=]>()?;
+                        let span = ident
+                            .span()
+                            .join(stream.span())
+                            .unwrap_or_else(|| ident.span());        
+                        ConstraintToken::ProgramSeed(Context::new(
+                            span,
+                            ConstraintProgramSeed {
+                                program_seed: stream.parse()?,
+                            },
+                        ))
+                    },
                     _ => return Err(ParseError::new(ident.span(), "Invalid attribute")),
                 }
             } else {
@@ -206,7 +213,7 @@ pub fn parse_token(stream: ParseStream) -> ParseResult<ConstraintToken> {
                     },
                 ))
             }
-        }
+        },
         "realloc" => {
             if stream.peek(Token![=]) {
                 stream.parse::<Token![=]>()?;
@@ -294,6 +301,12 @@ pub fn parse_token(stream: ParseStream) -> ParseResult<ConstraintToken> {
                         space: stream.parse()?,
                     },
                 )),
+                "state" => ConstraintToken::State(Context::new(
+                    span,
+                    ConstraintState {
+                        state: stream.parse()?,
+                    },
+                )),
                 "constraint" => ConstraintToken::Raw(Context::new(
                     span,
                     ConstraintRaw {
@@ -343,6 +356,8 @@ pub struct ConstraintGroupBuilder<'ty> {
     pub owner: Option<Context<ConstraintOwner>>,
     pub rent_exempt: Option<Context<ConstraintRentExempt>>,
     pub seeds: Option<Context<ConstraintSeeds>>,
+    pub save_seeds: Option<Context<ConstraintSaveSeeds>>,
+    pub state: Option<Context<ConstraintState>>,
     pub executable: Option<Context<ConstraintExecutable>>,
     pub payer: Option<Context<ConstraintPayer>>,
     pub space: Option<Context<ConstraintSpace>>,
@@ -378,6 +393,8 @@ impl<'ty> ConstraintGroupBuilder<'ty> {
             owner: None,
             rent_exempt: None,
             seeds: None,
+            save_seeds: None,
+            state: None,
             executable: None,
             payer: None,
             space: None,
@@ -580,6 +597,8 @@ impl<'ty> ConstraintGroupBuilder<'ty> {
             owner,
             rent_exempt,
             seeds,
+            save_seeds,
+            state,
             executable,
             payer,
             space,
@@ -619,6 +638,7 @@ impl<'ty> ConstraintGroupBuilder<'ty> {
         }
 
         let is_init = init.is_some();
+        let save_seeds = save_seeds.is_some();
         let seeds = seeds.map(|c| ConstraintSeedsGroup {
             is_init,
             seeds: c.seeds.clone(),
@@ -626,6 +646,7 @@ impl<'ty> ConstraintGroupBuilder<'ty> {
                 .map(|b| b.bump)
                 .expect("bump must be provided with seeds"),
             program_seed: into_inner!(program_seed).map(|id| id.program_seed),
+            save_seeds,
         });
         let associated_token = match (
             associated_token_mint,
@@ -745,6 +766,7 @@ impl<'ty> ConstraintGroupBuilder<'ty> {
                     }
                 },
             })).transpose()?,
+            state: into_inner!(state),
             realloc: realloc.as_ref().map(|r| ConstraintReallocGroup {
                 payer: into_inner!(realloc_payer).unwrap().target,
                 space: r.space.clone(),
@@ -778,6 +800,8 @@ impl<'ty> ConstraintGroupBuilder<'ty> {
             ConstraintToken::Owner(c) => self.add_owner(c),
             ConstraintToken::RentExempt(c) => self.add_rent_exempt(c),
             ConstraintToken::Seeds(c) => self.add_seeds(c),
+            ConstraintToken::SaveSeeds(c) => self.add_save_seeds(c),
+            ConstraintToken::State(c) => self.add_state(c),
             ConstraintToken::Executable(c) => self.add_executable(c),
             ConstraintToken::Payer(c) => self.add_payer(c),
             ConstraintToken::Space(c) => self.add_space(c),
@@ -1188,6 +1212,28 @@ impl<'ty> ConstraintGroupBuilder<'ty> {
             return Err(ParseError::new(c.span(), "seeds already provided"));
         }
         self.seeds.replace(c);
+        Ok(())
+    }
+
+    fn add_save_seeds(&mut self, c: Context<ConstraintSaveSeeds>) -> ParseResult<()> {
+        if self.save_seeds.is_some() {
+            return Err(ParseError::new(c.span(), "save seeds already provided"));
+        }
+        if self.seeds.is_none() {
+            return Err(ParseError::new(
+                c.span(),
+                "seeds must be provided to save them",
+            ));
+        }
+        self.save_seeds.replace(c);
+        Ok(())
+    }
+
+    fn add_state(&mut self, c: Context<ConstraintState>) -> ParseResult<()> {
+        if self.state.is_some() {
+            return Err(ParseError::new(c.span(), "state already provided"));
+        }
+        self.state.replace(c);
         Ok(())
     }
 

@@ -206,6 +206,17 @@ pub enum ErrorCode {
     #[msg("The account was duplicated for more than one reallocation")]
     AccountDuplicateReallocs,
 
+    // Compression
+    /// 3050 - The compressed account state failed to deserialize
+    #[msg("The compressed account state failed to deserialize")]
+    CompressedStateDidNotDeserialize = 3050,
+    /// 3051 - Invalid compressed state version number
+    #[msg("Invalid compressed state version number")]
+    CompressedStateInvalidVersion,
+    /// 3052 - The account state hash does not match existing state hash
+    #[msg("The account state hash does not match existing state hash")]
+    CompressedStateMismatch,
+
     // Miscellaneous
     /// 4100 - The declared program id does not match actual program id
     #[msg("The declared program id does not match the actual program id")]

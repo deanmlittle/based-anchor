@@ -25,14 +25,14 @@ pub fn generate(accs: &AccountsStruct) -> proc_macro2::TokenStream {
                     quote! {
                         #[cfg(feature = "anchor-debug")]
                         ::solana_program::log::sol_log(stringify!(#name));
-                        let #name: #ty = anchor_lang::Accounts::try_accounts(__program_id, __accounts, __ix_data, __bumps, __reallocs)?;
+                        let #name: #ty = anchor_lang::Accounts::try_accounts(__program_id, __accounts, __ix_data, __bumps, __seeds, __state, __reallocs)?;
                     }
                 }
                 AccountField::Field(f) => {
-                    // `init` and `zero` acccounts are special cased as they are
+                    // `init`, `zero` and `compressed` acccounts are special cased as they are
                     // deserialized by constraints. Here, we just take out the
                     // AccountInfo for later use at constraint validation time.
-                    if is_init(af) || f.constraints.zeroed.is_some()  {
+                    if is_init(af) || f.constraints.zeroed.is_some() {
                         let name = &f.ident;
                         // Optional accounts have slightly different behavior here and
                         // we can't leverage the try_accounts implementation for zero and init.
@@ -71,7 +71,7 @@ pub fn generate(accs: &AccountsStruct) -> proc_macro2::TokenStream {
                         quote! {
                             #[cfg(feature = "anchor-debug")]
                             ::solana_program::log::sol_log(stringify!(#typed_name));
-                            let #typed_name = anchor_lang::Accounts::try_accounts(__program_id, __accounts, __ix_data, __bumps, __reallocs)
+                            let #typed_name = anchor_lang::Accounts::try_accounts(__program_id, __accounts, __ix_data, __bumps, __seeds, __state, __reallocs)
                                 .map_err(|e| e.with_account_name(#name))?;
                         }
                     }
@@ -122,6 +122,8 @@ pub fn generate(accs: &AccountsStruct) -> proc_macro2::TokenStream {
                 __accounts: &mut &[anchor_lang::solana_program::account_info::AccountInfo<'info>],
                 __ix_data: &[u8],
                 __bumps: &mut std::collections::BTreeMap<String, u8>,
+                __seeds: &mut std::collections::BTreeMap<String, Vec<u8>>,
+                __state: &mut std::collections::BTreeMap<String, Vec<u8>>,
                 __reallocs: &mut std::collections::BTreeSet<anchor_lang::solana_program::pubkey::Pubkey>,
             ) -> anchor_lang::Result<Self> {
                 // Deserialize instruction, if declared.

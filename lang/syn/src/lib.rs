@@ -369,6 +369,30 @@ impl Field {
                     stream
                 }
             },
+            // Ty::CompressedAccount(CompressedAccountTy { boxed, .. }) => {
+            //     let stream = if checked {
+            //         quote! {
+            //             match #container_ty::try_from_state(&#field, #field_str) {
+            //                 Ok(val) => val,
+            //                 Err(e) => return Err(e.with_account_name(#field_str))
+            //             }
+            //         }
+            //     } else {
+            //         quote! {
+            //             match #container_ty::try_from_unchecked_state(&#field, #field_str) {
+            //                 Ok(val) => val,
+            //                 Err(e) => return Err(e.with_account_name(#field_str))
+            //             }
+            //         }
+            //     };
+            //     if *boxed {
+            //         quote! {
+            //             Box::new(#stream)
+            //         }
+            //     } else {
+            //         stream
+            //     }
+            // },
             Ty::AccountLoader(_) => {
                 if checked {
                     quote! {
@@ -411,6 +435,9 @@ impl Field {
             Ty::Account(_) => quote! {
                 anchor_lang::accounts::account::Account
             },
+            Ty::CompressedAccount(_) => quote! {
+                anchor_lang::accounts::compressed_account::CompressedAccount
+            },
             Ty::Migration(_) => quote! {
                 anchor_lang::accounts::migration::Migration
             },
@@ -450,6 +477,12 @@ impl Field {
                 ProgramData
             },
             Ty::Account(ty) => {
+                let ident = &ty.account_type_path;
+                quote! {
+                    #ident
+                }
+            },
+            Ty::CompressedAccount(ty) => {
                 let ident = &ty.account_type_path;
                 quote! {
                     #ident
@@ -520,6 +553,7 @@ pub enum Ty {
     AccountLoader(AccountLoaderTy),
     Sysvar(SysvarTy),
     Account(AccountTy),
+    CompressedAccount(CompressedAccountTy),
     Migration(MigrationTy),
     Program(ProgramTy),
     Interface(InterfaceTy),
@@ -553,6 +587,16 @@ pub struct AccountLoaderTy {
 pub struct AccountTy {
     // The struct type of the account.
     pub account_type_path: TypePath,
+    // True if the account has been boxed via `Box<T>`.
+    pub boxed: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CompressedAccountTy {
+    // The struct type of the account.
+    pub account_type_path: TypePath,
+    // The state of the account.
+    pub state: Vec<u8>,
     // True if the account has been boxed via `Box<T>`.
     pub boxed: bool,
 }
@@ -632,6 +676,7 @@ pub struct ConstraintGroup {
     pub owner: Option<ConstraintOwner>,
     pub rent_exempt: Option<ConstraintRentExempt>,
     pub seeds: Option<ConstraintSeedsGroup>,
+    pub state: Option<ConstraintState>,
     pub executable: Option<ConstraintExecutable>,
     pub has_one: Vec<ConstraintHasOne>,
     pub raw: Vec<ConstraintRaw>,
@@ -676,6 +721,7 @@ pub enum Constraint {
     Owner(ConstraintOwner),
     RentExempt(ConstraintRentExempt),
     Seeds(ConstraintSeedsGroup),
+    State(ConstraintState),
     AssociatedToken(ConstraintAssociatedToken),
     Executable(ConstraintExecutable),
     Close(ConstraintClose),
@@ -698,6 +744,8 @@ pub enum ConstraintToken {
     Owner(Context<ConstraintOwner>),
     RentExempt(Context<ConstraintRentExempt>),
     Seeds(Context<ConstraintSeeds>),
+    SaveSeeds(Context<ConstraintSaveSeeds>),
+    State(Context<ConstraintState>),
     Executable(Context<ConstraintExecutable>),
     Close(Context<ConstraintClose>),
     Payer(Context<ConstraintPayer>),
@@ -814,12 +862,21 @@ pub struct ConstraintSeedsGroup {
     pub seeds: Punctuated<Expr, Token![,]>,
     pub bump: Option<Expr>,         // None => bump was given without a target.
     pub program_seed: Option<Expr>, // None => use the current program's program_id.
+    pub save_seeds: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConstraintState {
+    pub state: Expr
 }
 
 #[derive(Debug, Clone)]
 pub struct ConstraintSeeds {
     pub seeds: Punctuated<Expr, Token![,]>,
 }
+
+#[derive(Debug, Clone)]
+pub struct ConstraintSaveSeeds {}
 
 #[derive(Debug, Clone)]
 pub struct ConstraintExecutable {}

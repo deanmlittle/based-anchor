@@ -34,6 +34,10 @@ pub struct Context<'a, 'b, 'c, 'info, T> {
     /// convenience so that handlers don't have to recalculate bump seeds or
     /// pass them in as arguments.
     pub bumps: BTreeMap<String, u8>,
+    /// Seeds of accounts used during PDA
+    pub seeds: BTreeMap<String, Vec<u8>>,
+    /// State storage for seeds and compressed accounts
+    pub state: BTreeMap<String, Vec<u8>>
 }
 
 impl<'a, 'b, 'c, 'info, T: fmt::Debug> fmt::Debug for Context<'a, 'b, 'c, 'info, T> {
@@ -43,6 +47,8 @@ impl<'a, 'b, 'c, 'info, T: fmt::Debug> fmt::Debug for Context<'a, 'b, 'c, 'info,
             .field("accounts", &self.accounts)
             .field("remaining_accounts", &self.remaining_accounts)
             .field("bumps", &self.bumps)
+            .field("seeds", &self.seeds)
+            .field("state", &self.state)
             .finish()
     }
 }
@@ -53,12 +59,16 @@ impl<'a, 'b, 'c, 'info, T: Accounts<'info>> Context<'a, 'b, 'c, 'info, T> {
         accounts: &'b mut T,
         remaining_accounts: &'c [AccountInfo<'info>],
         bumps: BTreeMap<String, u8>,
+        seeds: BTreeMap<String, Vec<u8>>,
+        state: BTreeMap<String, Vec<u8>>,
     ) -> Self {
         Self {
             program_id,
             accounts,
             remaining_accounts,
             bumps,
+            seeds,
+            state
         }
     }
 }

@@ -80,6 +80,7 @@ pub fn linearize(c_group: &ConstraintGroup) -> Vec<Constraint> {
         owner,
         rent_exempt,
         seeds,
+        state,
         executable,
         close,
         address,
@@ -102,6 +103,9 @@ pub fn linearize(c_group: &ConstraintGroup) -> Vec<Constraint> {
     }
     if let Some(c) = seeds {
         constraints.push(Constraint::Seeds(c));
+    }
+    if let Some(c) = state {
+        constraints.push(Constraint::State(c));
     }
     if let Some(c) = associated_token {
         constraints.push(Constraint::AssociatedToken(c));
@@ -153,6 +157,7 @@ fn generate_constraint(
         Constraint::Owner(c) => generate_constraint_owner(f, c),
         Constraint::RentExempt(c) => generate_constraint_rent_exempt(f, c),
         Constraint::Seeds(c) => generate_constraint_seeds(f, c),
+        Constraint::State(c) => generate_constraint_state(f, c),
         Constraint::Executable(c) => generate_constraint_executable(f, c),
         Constraint::Close(c) => generate_constraint_close(f, c, accs),
         Constraint::Address(c) => generate_constraint_address(f, c),
@@ -476,6 +481,13 @@ fn generate_constraint_init_group(
                 }
             };
 
+            let save_seeds = match c.save_seeds {
+                true => quote! {
+                        __seeds.insert(#name_str.to_string(), [#maybe_seeds_plus_comma &[__bump]].into_iter().map(|ms| ms.to_vec()).flatten().collect::<Vec<u8>>());
+                },
+                false => quote! {}
+            };
+
             (
                 quote! {
                     let (__pda_address, __bump) = Pubkey::find_program_address(
@@ -483,6 +495,7 @@ fn generate_constraint_init_group(
                         __program_id,
                     );
                     __bumps.insert(#name_str.to_string(), __bump);
+                    #save_seeds
                     #validate_pda
                 },
                 quote! {
@@ -877,20 +890,38 @@ fn generate_constraint_seeds(f: &Field, c: &ConstraintSeedsGroup) -> proc_macro2
         // Not init here, so do all the checks.
         let define_pda = match c.bump.as_ref() {
             // Bump target not given. Find it.
-            None => quote! {
-                let (__pda_address, __bump) = Pubkey::find_program_address(
-                    &[#maybe_seeds_plus_comma],
-                    &#deriving_program_id,
-                );
-                __bumps.insert(#name_str.to_string(), __bump);
+            None => {
+                let save_seeds = match c.save_seeds {
+                    true => quote! {
+                            __seeds.insert(#name_str.to_string(), [#maybe_seeds_plus_comma &[__bump]].into_iter().map(|ms| ms.to_vec()).flatten().collect::<Vec<u8>>());
+                    },
+                    false => quote! {}
+                };
+                quote! {
+                    let (__pda_address, __bump) = Pubkey::find_program_address(
+                        &[#maybe_seeds_plus_comma],
+                        &#deriving_program_id,
+                    );
+                    __bumps.insert(#name_str.to_string(), __bump);
+                    #save_seeds
+                }
             },
             // Bump target given. Use it.
-            Some(b) => quote! {
-                let __pda_address = Pubkey::create_program_address(
-                    &[#maybe_seeds_plus_comma &[#b][..]],
-                    &#deriving_program_id,
-                ).map_err(|_| anchor_lang::error::Error::from(anchor_lang::error::ErrorCode::ConstraintSeeds).with_account_name(#name_str))?;
-            },
+            Some(b) => {
+                let save_seeds = match c.save_seeds {
+                    true => quote! {
+                            __seeds.insert(#name_str.to_string(), [#maybe_seeds_plus_comma &[#b]].into_iter().map(|ms| ms.to_vec()).flatten().collect::<Vec<u8>>());
+                    },
+                    false => quote! {}
+                };
+                quote! {
+                    let __pda_address = Pubkey::create_program_address(
+                        &[#maybe_seeds_plus_comma &[#b][..]],
+                        &#deriving_program_id,
+                    ).map_err(|_| anchor_lang::error::Error::from(anchor_lang::error::ErrorCode::ConstraintSeeds).with_account_name(#name_str))?;
+                    #save_seeds
+                }
+            }
         };
         quote! {
             // Define the PDA.
@@ -901,6 +932,15 @@ fn generate_constraint_seeds(f: &Field, c: &ConstraintSeedsGroup) -> proc_macro2
                 return Err(anchor_lang::error::Error::from(anchor_lang::error::ErrorCode::ConstraintSeeds).with_account_name(#name_str).with_pubkeys((#name.key(), __pda_address)));
             }
         }
+    }
+}
+
+fn generate_constraint_state(f: &Field, c: &ConstraintState) -> proc_macro2::TokenStream {
+    let name = &f.ident;
+    let name_str = name.to_string();
+    let state_value = &c.state;
+    quote! {
+        __state.insert(#name_str.to_string(), #state_value)
     }
 }
 
