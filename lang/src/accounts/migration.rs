@@ -14,214 +14,102 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{fmt, marker::PhantomData};
 use std::ops::{Deref, DerefMut};
 
+
 /// Wrapper around [`AccountInfo`](crate::solana_program::account_info::AccountInfo)
-/// that verifies program ownership and deserializes underlying data into a Rust type.
-///
+/// focused on handling and assisting with migrations within Solana's Anchor framework.
+/// 
 /// # Table of Contents
-/// - [Basic Functionality](#basic-functionality)
-/// - [Using Account with non-anchor types](#using-account-with-non-anchor-types)
-/// - [Out of the box wrapper types](#out-of-the-box-wrapper-types)
+/// - [How Migration Works](#how-migration-works)
+/// - [Reallocating After Migration](#reallocating-after-migration)
 ///
-/// # Basic Functionality
+/// # How Migration Works
 ///
-/// Account checks that `Account.info.owner == T::owner()`.
-/// This means that the data type that Accounts wraps around (`=T`) needs to
-/// implement the [Owner trait](crate::Owner).
-/// The `#[account]` attribute implements the Owner trait for
-/// a struct using the `crate::ID` declared by [`declare_id`](crate::declare_id)
-/// in the same program. It follows that Account can also be used
-/// with a `T` that comes from a different program.
+/// In Anchor, state is a specialized type of account that can store global data. 
+/// However, the structure of the state may need adjustments over time as programs evolve, necessitating state migrations.
+/// State migrations are necessary when one needs to shift from one type of state structure to another. 
+/// In practical terms, you might be introducing new fields, adjusting existing ones, or eliminating some of them.
 ///
-/// Checks:
+/// ## Example of a State Migration in Anchor
+/// 
+/// The migration process in Based Anchor involves:
+/// - Defining the new state structure.
+/// - Implementing the `Migrate` trait to outline how the data from the old state maps to the new state.
+/// - Using the migration function to transition from the old state to the new one.
 ///
-/// - `Account.info.owner == T::owner()`
-/// - `!(Account.info.owner == SystemProgram && Account.info.lamports() == 0)`
+/// ```rust
+/// #[account]
+/// pub struct TypeA {
+///     pub bump: u8,
+///     pub data: Vec<u8>
+/// }
+/// 
+/// impl Space for TypeA {
+///     const INIT_SPACE: usize = 8 + 1 + 4 + 32;
+/// }
 ///
-/// # Example
-/// ```ignore
-/// use anchor_lang::prelude::*;
-/// use other_program::Auth;
+/// #[account]
+/// pub struct TypeB {
+///     pub bump: u8,
+///     pub data: Vec<u8>
+/// }
+/// 
+/// impl Space for TypeB  {
+///     const INIT_SPACE: usize = 8 + 1 + 4 + 64;
+/// }
 ///
-/// declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
-///
-/// #[program]
-/// mod hello_anchor {
-///     use super::*;
-///     pub fn set_data(ctx: Context<SetData>, data: u64) -> Result<()> {
-///         if (*ctx.accounts.auth_account).authorized {
-///             (*ctx.accounts.my_account).data = data;
+/// impl Migrate<TypeB> for TypeA {
+///     fn migrate(&self) -> TypeB {
+///         TypeB {
+///             bump: self.bump,
+///             data: vec![0x0b; 64]
 ///         }
-///         Ok(())
 ///     }
 /// }
+/// ```
 ///
-/// #[account]
-/// #[derive(Default)]
-/// pub struct MyData {
-///     pub data: u64
-/// }
+/// - Structural Redefinition: The code initially defines two state structures, `TypeA` and `TypeB`. `TypeB` appears to be an expanded version of `TypeA`, showcasing a common scenario in migrations.
+/// - Migration Logic: Implement the `Migrate` trait for `TypeA`, indicating how it should transition to `TypeB`. Here, the data from `TypeA` is taken and expanded upon to match the format of `TypeB`.
+/// - Invoking Migration: When you wish to perform the migration, your program will load `TypeA`, execute the migrate function, and then save the resulting `TypeB` state. The intricacies of this process, such as reallocation of storage, are handled internally by Anchor.
+/// 
+/// 
+/// # Reallocating After Migration
 ///
+/// Once the state migration has been successfully executed, it's often necessary to reallocate memory to fit the new state structure. 
+/// In Solana, accounts have a fixed size once initialized. So, as your state struct changes, its size can vary. 
+/// For example, if you introduce new fields or expand existing ones, the state might require more space. 
+/// Conversely, if you're streamlining your state or removing unnecessary fields, you might free up space.
+/// 
+/// Reallocating ensures that:
+/// - You aren't wasting space on the Solana blockchain (and thus not incurring unnecessary costs).
+/// - Your migration can operate without errors due to memory constraints.
+/// 
+/// ## Example of how Reallocation Works in Migration
+/// Let's continue to examine the accounts of the previous example to see how reallocation works.
+/// 
+/// ```rust
 /// #[derive(Accounts)]
-/// pub struct SetData<'info> {
-///     #[account(mut)]
-///     pub my_account: Account<'info, MyData> // checks that my_account.info.owner == Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS
-///     pub auth_account: Account<'info, Auth> // checks that auth_account.info.owner == FEZGUxNhZWpYPj9MJCrZJvUo1iF9ys34UHx52y4SzVW9
+/// pub struct MigrateBigToSmall<'info> {
+///     #[account(
+///         mut,
+///         seeds = [b"account", signer.key().as_ref()],
+///         bump = data.bump,
+///         realloc = TypeA::INIT_SPACE,
+///         realloc::zero = false, 
+///         realloc::payer = signer
+///     )]
+///     data: Migration<'info, TypeB, TypeA>,
+///     system_program: Program<'info, System>
 /// }
-///
-/// // In a different program
-///
-/// ...
-/// declare_id!("FEZGUxNhZWpYPj9MJCrZJvUo1iF9ys34UHx52y4SzVW9");
-/// #[account]
-/// #[derive(Default)]
-/// pub struct Auth {
-///     pub authorized: bool
-/// }
-/// ...
+/// 
 /// ```
-///
-/// # Using Account with non-anchor programs
-///
-/// Account can also be used with non-anchor programs. The data types from
-/// those programs are not annotated with `#[account]` so you have to
-/// - create a wrapper type around the structs you want to wrap with Account
-/// - implement the functions required by Account yourself
-/// instead of using `#[account]`. You only have to implement a fraction of the
-/// functions `#[account]` generates. See the example below for the code you have
-/// to write.
-///
-/// The mint wrapper type that Anchor provides out of the box for the token program ([source](https://github.com/coral-xyz/anchor/blob/master/spl/src/token.rs))
-/// ```ignore
-/// #[derive(Clone)]
-/// pub struct Mint(spl_token::state::Mint);
-///
-/// // This is necessary so we can use "anchor_spl::token::Mint::LEN"
-/// // because rust does not resolve "anchor_spl::token::Mint::LEN" to
-/// // "spl_token::state::Mint::LEN" automatically
-/// impl Mint {
-///     pub const LEN: usize = spl_token::state::Mint::LEN;
-/// }
-///
-/// // You don't have to implement the "try_deserialize" function
-/// // from this trait. It delegates to
-/// // "try_deserialize_unchecked" by default which is what we want here
-/// // because non-anchor accounts don't have a discriminator to check
-/// impl anchor_lang::AccountDeserialize for Mint {
-///     fn try_deserialize_unchecked(buf: &mut &[u8]) -> Result<Self> {
-///         spl_token::state::Mint::unpack(buf).map(Mint)
-///     }
-/// }
-/// // AccountSerialize defaults to a no-op which is what we want here
-/// // because it's a foreign program, so our program does not
-/// // have permission to write to the foreign program's accounts anyway
-/// impl anchor_lang::AccountSerialize for Mint {}
-///
-/// impl anchor_lang::Owner for Mint {
-///     fn owner() -> Pubkey {
-///         // pub use spl_token::ID is used at the top of the file
-///         ID
-///     }
-/// }
-///
-/// // Implement the "std::ops::Deref" trait for better user experience
-/// impl Deref for Mint {
-///     type Target = spl_token::state::Mint;
-///
-///     fn deref(&self) -> &Self::Target {
-///         &self.0
-///     }
-/// }
-/// ```
-///
-/// ## Out of the box wrapper types
-///
-/// ### Accessing BPFUpgradeableLoader Data
-///
-/// Anchor provides wrapper types to access data stored in programs owned by the BPFUpgradeableLoader
-/// such as the upgrade authority. If you're interested in the data of a program account, you can use
-/// ```ignore
-/// Account<'info, BpfUpgradeableLoaderState>
-/// ```
-/// and then match on its contents inside your instruction function.
-///
-/// Alternatively, you can use
-/// ```ignore
-/// Account<'info, ProgramData>
-/// ```
-/// to let anchor do the matching for you and return the ProgramData variant of BpfUpgradeableLoaderState.
-///
-/// # Example
-/// ```ignore
-/// use anchor_lang::prelude::*;
-/// use crate::program::MyProgram;
-///
-/// declare_id!("Cum9tTyj5HwcEiAmhgaS7Bbj4UczCwsucrCkxRECzM4e");
-///
-/// #[program]
-/// pub mod my_program {
-///     use super::*;
-///
-///     pub fn set_initial_admin(
-///         ctx: Context<SetInitialAdmin>,
-///         admin_key: Pubkey
-///     ) -> Result<()> {
-///         ctx.accounts.admin_settings.admin_key = admin_key;
-///         Ok(())
-///     }
-///
-///     pub fn set_admin(...){...}
-///
-///     pub fn set_settings(...){...}
-/// }
-///
-/// #[account]
-/// #[derive(Default, Debug)]
-/// pub struct AdminSettings {
-///     admin_key: Pubkey
-/// }
-///
-/// #[derive(Accounts)]
-/// pub struct SetInitialAdmin<'info> {
-///     #[account(init, payer = authority, seeds = [b"admin"], bump)]
-///     pub admin_settings: Account<'info, AdminSettings>,
-///     #[account(mut)]
-///     pub authority: Signer<'info>,
-///     #[account(constraint = program.programdata_address()? == Some(program_data.key()))]
-///     pub program: Program<'info, MyProgram>,
-///     #[account(constraint = program_data.upgrade_authority_address == Some(authority.key()))]
-///     pub program_data: Account<'info, ProgramData>,
-///     pub system_program: Program<'info, System>,
-/// }
-/// ```
-///
-/// This example solves a problem you may face if your program has admin settings: How do you set the
-/// admin key for restricted functionality after deployment? Setting the admin key itself should
-/// be a restricted action but how do you restrict it without having set an admin key?
-/// You're stuck in a loop.
-/// One solution is to use the upgrade authority of the program as the initial
-/// (or permanent) admin key.
-///
-/// ### SPL Types
-///
-/// Anchor provides wrapper types to access accounts owned by the token program. Use
-/// ```ignore
-/// use anchor_spl::token::TokenAccount;
-///
-/// #[derive(Accounts)]
-/// pub struct Example {
-///     pub my_acc: Account<'info, TokenAccount>
-/// }
-/// ```
-/// to access token accounts and
-/// ```ignore
-/// use anchor_spl::token::Mint;
-///
-/// #[derive(Accounts)]
-/// pub struct Example {
-///     pub my_acc: Account<'info, Mint>
-/// }
-/// ```
-/// to access mint accounts.
+/// In the migration context `MigrateBigToSmall`, notice the `realloc` attribute. 
+/// It indicates the new space requirement for the state after migration, defined by `TypeA::INIT_SPACE`.
+/// 
+/// The attributes under `realloc` include:
+/// - `realloc::zero`: Whether or not to zero out the additional memory. Here, it's set to `false`.
+/// - `realloc::payer`: Specifies who will bear the cost of reallocation. In this case, the `signer` account covers the costs.
+
+
 
 #[derive(Clone)]
 
